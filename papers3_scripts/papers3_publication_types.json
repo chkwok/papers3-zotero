@@ -1,0 +1,572 @@
+{
+  "metadata": {
+    "source": "PredicateEditor.plist",
+    "description": "Complete mapping of Papers3 publication types and subtypes",
+    "extraction_date": "2025-08-06T00:15:00.000000",
+    "total_main_types": 9,
+    "total_subtypes": 89
+  },
+  "publication_types": {
+    "main_types": [
+      {
+        "type": 999,
+        "name": "Paper",
+        "entity": "Publication",
+        "description": "Generic paper/publication"
+      },
+      {
+        "type": 400,
+        "name": "Article",
+        "entity": "Publication",
+        "description": "Journal articles and academic papers"
+      },
+      {
+        "type": 0,
+        "name": "Book",
+        "entity": "Publication",
+        "description": "Books and book chapters"
+      },
+      {
+        "type": 300,
+        "name": "Media",
+        "entity": "Publication",
+        "description": "Media files (videos, images, etc.)"
+      },
+      {
+        "type": 500,
+        "name": "Patent",
+        "entity": "Publication",
+        "description": "Patents and patent applications"
+      },
+      {
+        "type": 700,
+        "name": "Report",
+        "entity": "Publication",
+        "description": "Reports and technical documents"
+      },
+      {
+        "type": -100,
+        "name": "Periodical",
+        "entity": "Bundle",
+        "description": "Journals and periodicals"
+      },
+      {
+        "type": -200,
+        "name": "Conference",
+        "entity": "Bundle",
+        "description": "Conferences and symposiums"
+      },
+      {
+        "type": -300,
+        "name": "Website",
+        "entity": "Bundle",
+        "description": "Websites and web resources"
+      }
+    ],
+    "subtypes": {
+      "400": {
+        "name": "Article",
+        "subtypes": [
+          {
+            "type": 400,
+            "name": "Article",
+            "description": "Generic article"
+          },
+          {
+            "type": 401,
+            "name": "Journal Article",
+            "description": "Peer-reviewed journal article"
+          },
+          {
+            "type": 402,
+            "name": "Magazine Article",
+            "description": "Magazine article"
+          },
+          {
+            "type": 403,
+            "name": "Newspaper Article",
+            "description": "Newspaper article"
+          },
+          {
+            "type": 420,
+            "name": "Review Article",
+            "description": "Literature review article"
+          },
+          {
+            "type": 410,
+            "name": "Conference Paper",
+            "description": "Conference paper"
+          },
+          {
+            "type": 415,
+            "name": "Conference Poster",
+            "description": "Conference poster"
+          }
+        ]
+      },
+      "0": {
+        "name": "Book",
+        "subtypes": [
+          {
+            "type": 0,
+            "name": "Book",
+            "description": "Generic book"
+          },
+          {
+            "type": 1,
+            "name": "Book Chapter",
+            "description": "Chapter in edited book"
+          },
+          {
+            "type": 20,
+            "name": "Edited Book",
+            "description": "Book with editors"
+          },
+          {
+            "type": 40,
+            "name": "Textbook",
+            "description": "Educational textbook"
+          },
+          {
+            "type": 30,
+            "name": "Reference Book",
+            "description": "Reference work"
+          },
+          {
+            "type": 10,
+            "name": "Thesis/Dissertation",
+            "description": "Academic thesis or dissertation"
+          },
+          {
+            "type": -1000,
+            "name": "Manual",
+            "description": "Technical manual"
+          },
+          {
+            "type": -1010,
+            "name": "Handbook",
+            "description": "Handbook or guide"
+          },
+          {
+            "type": 99,
+            "name": "Other Book",
+            "description": "Other book type"
+          }
+        ]
+      },
+      "300": {
+        "name": "Media",
+        "subtypes": [
+          {
+            "type": 300,
+            "name": "Media",
+            "description": "Generic media"
+          },
+          {
+            "type": 318,
+            "name": "Video",
+            "description": "Video file"
+          },
+          {
+            "type": 301,
+            "name": "Film",
+            "description": "Film or movie"
+          },
+          {
+            "type": 302,
+            "name": "Television",
+            "description": "TV program"
+          },
+          {
+            "type": 303,
+            "name": "Radio",
+            "description": "Radio program"
+          },
+          {
+            "type": 311,
+            "name": "Audio",
+            "description": "Audio recording"
+          },
+          {
+            "type": 317,
+            "name": "Podcast",
+            "description": "Podcast episode"
+          },
+          {
+            "type": 312,
+            "name": "Music",
+            "description": "Musical recording"
+          },
+          {
+            "type": 310,
+            "name": "Sound Recording",
+            "description": "Sound recording"
+          },
+          {
+            "type": 316,
+            "name": "Interview",
+            "description": "Interview recording"
+          },
+          {
+            "type": 315,
+            "name": "Lecture",
+            "description": "Academic lecture"
+          },
+          {
+            "type": 319,
+            "name": "Presentation",
+            "description": "Presentation or talk"
+          },
+          {
+            "type": 350,
+            "name": "Dataset",
+            "description": "Research dataset"
+          },
+          {
+            "type": 313,
+            "name": "Image",
+            "description": "Generic image"
+          },
+          {
+            "type": 314,
+            "name": "Photograph",
+            "description": "Photograph"
+          },
+          {
+            "type": 320,
+            "name": "Map",
+            "description": "Map or chart"
+          },
+          {
+            "type": 326,
+            "name": "Chart",
+            "description": "Data chart"
+          },
+          {
+            "type": 322,
+            "name": "Graph",
+            "description": "Data graph"
+          },
+          {
+            "type": 327,
+            "name": "Diagram",
+            "description": "Diagram or schematic"
+          },
+          {
+            "type": 323,
+            "name": "Figure",
+            "description": "Figure or illustration"
+          },
+          {
+            "type": 324,
+            "name": "Illustration",
+            "description": "Illustration"
+          },
+          {
+            "type": 328,
+            "name": "Drawing",
+            "description": "Drawing or sketch"
+          },
+          {
+            "type": 325,
+            "name": "Painting",
+            "description": "Painting or artwork"
+          },
+          {
+            "type": 331,
+            "name": "Sculpture",
+            "description": "Sculpture"
+          },
+          {
+            "type": 329,
+            "name": "Artwork",
+            "description": "Artwork"
+          },
+          {
+            "type": 330,
+            "name": "Exhibition",
+            "description": "Art exhibition"
+          },
+          {
+            "type": 321,
+            "name": "Poster",
+            "description": "Poster or banner"
+          },
+          {
+            "type": 341,
+            "name": "Software",
+            "description": "Software application"
+          },
+          {
+            "type": 344,
+            "name": "Application",
+            "description": "Computer application"
+          },
+          {
+            "type": 345,
+            "name": "Database",
+            "description": "Database"
+          },
+          {
+            "type": 340,
+            "name": "Code",
+            "description": "Computer code"
+          }
+        ]
+      },
+      "500": {
+        "name": "Patent",
+        "subtypes": [
+          {
+            "type": 525,
+            "name": "Patent Application",
+            "description": "Patent application"
+          },
+          {
+            "type": 500,
+            "name": "Patent",
+            "description": "Generic patent"
+          },
+          {
+            "type": 524,
+            "name": "Patent Document",
+            "description": "Patent document"
+          },
+          {
+            "type": 520,
+            "name": "Utility Patent",
+            "description": "Utility patent"
+          },
+          {
+            "type": 527,
+            "name": "Design Patent",
+            "description": "Design patent"
+          },
+          {
+            "type": 522,
+            "name": "Plant Patent",
+            "description": "Plant patent"
+          },
+          {
+            "type": 511,
+            "name": "Patent Specification",
+            "description": "Patent specification"
+          },
+          {
+            "type": 523,
+            "name": "Patent Claim",
+            "description": "Patent claim"
+          },
+          {
+            "type": 521,
+            "name": "Patent Abstract",
+            "description": "Patent abstract"
+          },
+          {
+            "type": 528,
+            "name": "Patent Drawing",
+            "description": "Patent drawing"
+          },
+          {
+            "type": 510,
+            "name": "Patent Search Report",
+            "description": "Patent search report"
+          },
+          {
+            "type": 526,
+            "name": "Patent Office Action",
+            "description": "Patent office action"
+          }
+        ]
+      },
+      "700": {
+        "name": "Report",
+        "subtypes": [
+          {
+            "type": 704,
+            "name": "Technical Report",
+            "description": "Technical report"
+          },
+          {
+            "type": 711,
+            "name": "Research Report",
+            "description": "Research report"
+          },
+          {
+            "type": 712,
+            "name": "Working Paper",
+            "description": "Working paper"
+          },
+          {
+            "type": 713,
+            "name": "Discussion Paper",
+            "description": "Discussion paper"
+          },
+          {
+            "type": 700,
+            "name": "Report",
+            "description": "Generic report"
+          },
+          {
+            "type": 702,
+            "name": "White Paper",
+            "description": "White paper"
+          },
+          {
+            "type": 701,
+            "name": "Policy Paper",
+            "description": "Policy paper"
+          },
+          {
+            "type": 703,
+            "name": "Case Study",
+            "description": "Case study"
+          },
+          {
+            "type": 716,
+            "name": "Evaluation Report",
+            "description": "Evaluation report"
+          },
+          {
+            "type": 722,
+            "name": "Annual Report",
+            "description": "Annual report"
+          },
+          {
+            "type": 718,
+            "name": "Progress Report",
+            "description": "Progress report"
+          },
+          {
+            "type": 710,
+            "name": "Feasibility Study",
+            "description": "Feasibility study"
+          },
+          {
+            "type": 719,
+            "name": "Impact Assessment",
+            "description": "Impact assessment"
+          },
+          {
+            "type": 723,
+            "name": "Literature Review",
+            "description": "Literature review"
+          },
+          {
+            "type": 717,
+            "name": "Survey Report",
+            "description": "Survey report"
+          },
+          {
+            "type": 720,
+            "name": "Market Report",
+            "description": "Market report"
+          },
+          {
+            "type": 721,
+            "name": "Financial Report",
+            "description": "Financial report"
+          },
+          {
+            "type": 715,
+            "name": "Audit Report",
+            "description": "Audit report"
+          },
+          {
+            "type": 714,
+            "name": "Compliance Report",
+            "description": "Compliance report"
+          },
+          {
+            "type": 799,
+            "name": "Other Report",
+            "description": "Other report type"
+          },
+          {
+            "type": 750,
+            "name": "Government Document",
+            "description": "Government document"
+          }
+        ]
+      },
+      "-100": {
+        "name": "Periodical",
+        "subtypes": [
+          {
+            "type": -100,
+            "name": "Journal",
+            "description": "Academic journal"
+          },
+          {
+            "type": -110,
+            "name": "Magazine",
+            "description": "Magazine"
+          },
+          {
+            "type": -101,
+            "name": "Newsletter",
+            "description": "Newsletter"
+          },
+          {
+            "type": -102,
+            "name": "Bulletin",
+            "description": "Bulletin"
+          }
+        ]
+      },
+      "-200": {
+        "name": "Conference",
+        "subtypes": [
+          {
+            "type": -200,
+            "name": "Conference",
+            "description": "Generic conference"
+          },
+          {
+            "type": -201,
+            "name": "Symposium",
+            "description": "Symposium"
+          },
+          {
+            "type": -202,
+            "name": "Workshop",
+            "description": "Workshop"
+          },
+          {
+            "type": -205,
+            "name": "Seminar",
+            "description": "Seminar"
+          },
+          {
+            "type": -203,
+            "name": "Congress",
+            "description": "Congress"
+          },
+          {
+            "type": -204,
+            "name": "Meeting",
+            "description": "Meeting"
+          }
+        ]
+      },
+      "-300": {
+        "name": "Website",
+        "subtypes": []
+      }
+    }
+  },
+  "statistics": {
+    "by_entity": {
+      "Publication": 6,
+      "Bundle": 3
+    },
+    "by_category": {
+      "academic": ["Article", "Book", "Report", "Thesis/Dissertation"],
+      "media": ["Media", "Video", "Audio", "Image"],
+      "intellectual_property": ["Patent"],
+      "periodicals": ["Periodical", "Journal", "Magazine"],
+      "events": ["Conference", "Symposium", "Workshop"],
+      "digital": ["Website", "Dataset", "Software"]
+    }
+  }
+} 
