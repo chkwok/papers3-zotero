@@ -20,6 +20,7 @@ import random
 import string
 import re
 import shutil
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -124,9 +125,6 @@ class Papers3ToZoteroMigrator:
             'missing_files': []
         }
         
-        # Track used paths for collision detection
-        self.used_paths = set()
-        
     def validate_files_directory(self):
         """Validate that the Files directory has the expected hex structure"""
         if not self.files_dir or not self.files_dir.exists():
@@ -171,8 +169,54 @@ class Papers3ToZoteroMigrator:
             
         return filename
     
-    def build_human_readable_path(self, pub: Dict, pdf: Dict) -> Path:
-        """Build a human-readable file path for a PDF"""
+    def compute_file_hash(self, file_path: Path, quick: bool = False) -> str:
+        """Compute MD5 hash of a file
+        
+        Args:
+            file_path: Path to the file
+            quick: If True, only hash first 1MB for quick comparison
+            
+        Returns:
+            MD5 hash as hex string
+        """
+        hash_md5 = hashlib.md5()
+        chunk_size = 8192
+        max_bytes = 1024 * 1024 if quick else None  # 1MB for quick hash
+        bytes_read = 0
+        
+        try:
+            with open(file_path, 'rb') as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    hash_md5.update(chunk)
+                    bytes_read += len(chunk)
+                    if max_bytes and bytes_read >= max_bytes:
+                        break
+            return hash_md5.hexdigest()
+        except Exception as e:
+            logger.debug(f"Error computing hash for {file_path}: {e}")
+            return ""
+    
+    def files_are_identical(self, path1: Path, path2: Path) -> bool:
+        """Check if two files are identical
+        
+        First checks file size, then compares MD5 hashes
+        """
+        try:
+            # Quick check: file size
+            if path1.stat().st_size != path2.stat().st_size:
+                return False
+            
+            # Full check: MD5 hash
+            return self.compute_file_hash(path1) == self.compute_file_hash(path2)
+        except Exception as e:
+            logger.debug(f"Error comparing files: {e}")
+            return False
+    
+    def build_base_path(self, pub: Dict, pdf: Dict) -> Path:
+        """Build a base human-readable file path for a PDF (without collision handling)"""
         # Extract year
         pub_date = pub.get('publication_date')
         if pub_date:
@@ -220,25 +264,39 @@ class Papers3ToZoteroMigrator:
         base_filename = f"{title}_{year}{extension}"
         
         # Build full path
-        target_path = self.files_target_dir / year / author_name / base_filename
+        return self.files_target_dir / year / author_name / base_filename
+    
+    def find_available_path(self, source_path: Path, base_target_path: Path, pub_uuid: str) -> Tuple[Path, bool]:
+        """Find an available path for the file, checking for duplicates
         
-        # Handle collisions
-        if target_path in self.used_paths:
-            counter = 2
-            while True:
-                new_filename = f"{title}_{year}_{counter}{extension}"
-                target_path = self.files_target_dir / year / author_name / new_filename
-                if target_path not in self.used_paths:
-                    break
-                counter += 1
-                if counter > 100:  # Safety limit
-                    # Use UUID as last resort
-                    new_filename = f"{pub['uuid']}{extension}"
-                    target_path = self.files_target_dir / year / author_name / new_filename
-                    break
-                    
-        self.used_paths.add(target_path)
-        return target_path
+        Returns:
+            Tuple of (target_path, is_duplicate)
+            - target_path: Where to copy the file (or where it already exists)
+            - is_duplicate: True if file already exists at some path
+        """
+        # Check if base path is available or contains our file
+        if not base_target_path.exists():
+            return base_target_path, False
+        elif self.files_are_identical(source_path, base_target_path):
+            return base_target_path, True
+        
+        # Try numbered variants
+        stem = base_target_path.stem
+        suffix = base_target_path.suffix
+        parent = base_target_path.parent
+        
+        for counter in range(2, 11):  # Try _2 through _10
+            new_path = parent / f"{stem}_{counter}{suffix}"
+            if not new_path.exists():
+                return new_path, False
+            elif self.files_are_identical(source_path, new_path):
+                return new_path, True
+        
+        # Too many collisions, use UUID
+        uuid_path = parent / f"{pub_uuid}{suffix}"
+        if uuid_path.exists() and self.files_are_identical(source_path, uuid_path):
+            return uuid_path, True
+        return uuid_path, False
     
     def connect_databases(self):
         """Connect to Zotero database"""
@@ -594,40 +652,46 @@ class Papers3ToZoteroMigrator:
             self.stats['errors'].append(f"Publication {pub.get('uuid')}: {e}")
             return None
     
-    def copy_and_organize_file(self, source_path: Path, target_path: Path) -> bool:
-        """Copy a file from source to target with directory creation"""
+    def copy_and_organize_file(self, source_path: Path, target_path: Path, pub_uuid: str) -> Optional[Path]:
+        """Copy a file from source to target with smart duplicate detection
+        
+        Returns:
+            Path where file exists (either newly copied or already present), or None if failed
+        """
         try:
             # Check if source exists
             if not source_path.exists():
                 self.stats['files_missing'] += 1
                 self.stats['missing_files'].append(str(source_path))
-                return False
+                return None
                 
             self.stats['files_found'] += 1
             
-            # Check if target already exists
-            if target_path.exists():
+            # Find available path or detect duplicate
+            final_path, is_duplicate = self.find_available_path(source_path, target_path, pub_uuid)
+            
+            if is_duplicate:
                 self.stats['files_skipped'] += 1
-                logger.debug(f"Skipping existing file: {target_path}")
-                return True
+                logger.debug(f"File already exists at: {final_path}")
+                return final_path
                 
             # Create target directory if needed
-            target_path.parent.mkdir(parents=True, exist_ok=True)
+            final_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Copy file (or simulate in test mode)
             if not self.test_mode:
-                shutil.copy2(source_path, target_path)
-                logger.debug(f"Copied: {source_path} -> {target_path}")
+                shutil.copy2(source_path, final_path)
+                logger.debug(f"Copied: {source_path} -> {final_path}")
             else:
-                logger.debug(f"Would copy: {source_path} -> {target_path}")
+                logger.debug(f"Would copy: {source_path} -> {final_path}")
                 
             self.stats['files_copied'] += 1
-            return True
+            return final_path
             
         except Exception as e:
             logger.error(f"Error copying file {source_path}: {e}")
             self.stats['errors'].append(f"File copy error: {e}")
-            return False
+            return None
     
     def migrate_pdfs(self, pub: Dict, parent_item_id: Optional[int] = None):
         """Migrate PDF attachments for a publication"""
@@ -661,11 +725,12 @@ class Papers3ToZoteroMigrator:
                         source_path = Path(pdf_path)
                         
                     # Build target path with human-readable structure
-                    target_path = self.build_human_readable_path(pub, pdf)
+                    base_target_path = self.build_base_path(pub, pdf)
                     
-                    # Copy file
-                    if self.copy_and_organize_file(source_path, target_path):
-                        final_path = str(target_path.absolute())
+                    # Copy file with smart duplicate detection
+                    result_path = self.copy_and_organize_file(source_path, base_target_path, pub['uuid'])
+                    if result_path:
+                        final_path = str(result_path.absolute())
                     else:
                         # If copy failed, skip this attachment
                         logger.warning(f"Skipping attachment due to copy failure: {pdf_path}")
