@@ -5,10 +5,8 @@ description = "Migrate Papers3 library to Zotero with full metadata preservation
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "Chi Ho Kwok"}]
-requires-python = ">=3.12"
-dependencies = [
-    "requests>=2.32.4",
-]
+requires-python = ">=3.8"
+dependencies = []
 
 [project.scripts]
 papers3-to-zotero = "papers3_to_zotero:main"

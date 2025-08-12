@@ -22,15 +22,17 @@ A Python tool to migrate your Papers3 library directly to Zotero's SQLite databa
 
 ## Prerequisites
 
-1. **Papers3 Export**: Run the Papers3 extraction scripts to generate JSON files:
+1. **Python 3**: The tool requires Python 3 (uses only standard library, no external dependencies). Tested with Python 3.12.
+
+2. **Papers3 Export**: Run the Papers3 extraction scripts to generate JSON files:
    ```bash
-   python papers3_scripts/papers3_publications.py --full
-   python papers3_scripts/papers3_collections.py
-   python papers3_scripts/papers3_authors.py
-   python papers3_scripts/papers3_pdfs.py
+   python3 papers3_scripts/papers3_publications.py --full
+   python3 papers3_scripts/papers3_collections.py
+   python3 papers3_scripts/papers3_authors.py
+   python3 papers3_scripts/papers3_pdfs.py
    ```
 
-2. **Zotero Database**: 
+3. **Zotero Database**: 
    - Install Zotero desktop application
    - Create a backup of your Zotero database (usually at `~/Zotero/zotero.sqlite`)
    - For testing, use a fresh Zotero installation or copy of the database
@@ -42,11 +44,9 @@ A Python tool to migrate your Papers3 library directly to Zotero's SQLite databa
 git clone <repository>
 cd papers3-zotero
 
-# Install with uv
-uv sync
-
-# Or install with pip
-pip install -e .
+# No installation needed! The tool uses only Python standard library.
+# Just ensure you have Python 3.12 or newer:
+python3 --version
 ```
 
 ## Usage
@@ -56,7 +56,7 @@ pip install -e .
 Test with a small subset without making permanent changes:
 
 ```bash
-uv run python papers3_to_zotero.py \
+python3 papers3_to_zotero.py \
   --json-catalog ./catalog \
   --files-dir ~/Papers3/Library/Files \
   --files-target-dir ~/Documents/ZoteroLibrary \
@@ -70,7 +70,7 @@ uv run python papers3_to_zotero.py \
 After successful test, run the full migration with file copying:
 
 ```bash
-uv run python papers3_to_zotero.py \
+python3 papers3_to_zotero.py \
   --json-catalog ./catalog \
   --files-dir ~/Papers3/Library/Files \
   --files-target-dir ~/Documents/ZoteroLibrary \
@@ -82,7 +82,7 @@ uv run python papers3_to_zotero.py \
 Organize files without touching the database:
 
 ```bash
-uv run python papers3_to_zotero.py \
+python3 papers3_to_zotero.py \
   --json-catalog ./catalog \
   --files-dir ~/Papers3/Library/Files \
   --files-target-dir ~/Documents/ZoteroLibrary \
