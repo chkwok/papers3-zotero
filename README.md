@@ -57,28 +57,52 @@ Test with a small subset without making permanent changes:
 
 ```bash
 uv run python papers3_to_zotero.py \
-  --papers3-path . \
+  --json-catalog ./catalog \
+  --files-dir ~/Papers3/Library/Files \
+  --files-target-dir ~/Documents/ZoteroLibrary \
   --zotero-db zotero.sqlite \
   --test \
   --limit 10
 ```
 
-### Full Migration
+### Full Migration with File Organization
 
-After successful test, run the full migration:
+After successful test, run the full migration with file copying:
 
 ```bash
 uv run python papers3_to_zotero.py \
-  --papers3-path . \
+  --json-catalog ./catalog \
+  --files-dir ~/Papers3/Library/Files \
+  --files-target-dir ~/Documents/ZoteroLibrary \
   --zotero-db ~/Zotero/zotero.sqlite
+```
+
+### Files-Only Mode
+
+Organize files without touching the database:
+
+```bash
+uv run python papers3_to_zotero.py \
+  --json-catalog ./catalog \
+  --files-dir ~/Papers3/Library/Files \
+  --files-target-dir ~/Documents/ZoteroLibrary \
+  --zotero-db ~/Zotero/zotero.sqlite \
+  --files-only
 ```
 
 ### Command Line Options
 
-- `--papers3-path`: Path to Papers3 export directory containing `catalog/` folder (default: current directory)
+**Required Arguments:**
+- `--json-catalog`: Path to Papers3 JSON catalog directory containing exported files
+- `--files-dir`: Path to Papers3 Files directory with hex subdirectories (00-FF)
+- `--files-target-dir`: Destination directory for organized files
+
+**Optional Arguments:**
 - `--zotero-db`: Path to Zotero SQLite database (default: `zotero.sqlite`)
-- `--test`: Run in test mode - no changes will be committed
+- `--test`: Run in test mode - simulates operations without making changes
 - `--limit N`: Import only first N items (useful for testing)
+- `--files-only`: Only copy/organize files, skip database migration
+- `--skip-attachments`: Skip all attachment processing (metadata only)
 
 ## Migration Mapping
 
@@ -119,19 +143,34 @@ Stored in Zotero's Extra field:
 
 ### PDF Attachments
 
-PDFs are added as **linked files** (not imported):
-- Preserves your existing file organization
-- No duplication of PDF files
-- Absolute paths stored in database
-- Can be converted to stored files later in Zotero
+The tool offers two approaches for handling attachments:
+
+**1. File Organization (Recommended)**
+- Copies PDFs from Papers3's hex-based structure to human-readable folders
+- Organizes as: `Year/Author_Lastname/Title_Year.pdf`
+- Stores absolute paths to new locations in Zotero database
+- Preserves original files as backup
+
+**2. Link-Only Mode** (use `--skip-attachments` flag)
+- Skips all attachment processing
+- Imports only bibliographic metadata
+- Useful for quick metadata-only imports
+
+**File Organization Features:**
+- Sanitizes filenames for cross-platform compatibility
+- Handles name collisions automatically
+- Skips already-copied files (resume capability)
+- Logs missing files for review
+- Works in test mode to preview changes
 
 ## Important Notes
 
 1. **Backup First**: Always backup your Zotero database before migration
 2. **Close Zotero**: Ensure Zotero is closed during migration
-3. **PDF Paths**: PDFs are linked, not copied. Ensure Papers3 PDF paths remain accessible
-4. **Duplicates**: The script doesn't check for existing items - run on clean database or handle duplicates after
-5. **Sync**: After migration, Zotero will sync the new items to your online library (if configured)
+3. **Files Directory**: The `--files-dir` should point to Papers3's Files folder containing hex subdirectories (00, 01, ... FF)
+4. **File Organization**: Files are copied to a new structure, preserving originals
+5. **Duplicates**: The script doesn't check for existing items - run on clean database or handle duplicates after
+6. **Sync**: After migration, Zotero will sync the new items to your online library (if configured)
 
 ## Troubleshooting
 
@@ -154,16 +193,33 @@ After migration:
 
 ## Data Structure
 
-The tool expects Papers3 JSON exports in this structure:
+The tool expects the following structure:
+
+### Required Files
 ```
-papers3-zotero/
- catalog/
-    papers3_publications_full.json  # Main publication data
-    papers3_collections.json        # Collection hierarchy
-    papers3_authors.json            # Author details
-    papers3_pdfs.json               # PDF metadata
- papers3_to_zotero.py               # Migration script
- zotero.sqlite                       # Target database
+catalog/                              # JSON catalog directory
+├── papers3_publications_full.json   # Main publication data (or papers3_publications.json)
+└── papers3_collections.json         # Collection hierarchy (optional)
+
+Files/                               # Papers3 Files directory
+├── 00/                             # Hex-based subdirectories
+│   └── UUID.pdf                    # Attachment files
+├── 01/
+├── ...
+└── FF/
+```
+
+### Output Structure
+```
+ZoteroLibrary/                      # Target directory for organized files
+├── 2023/                          # Year directories
+│   ├── Smith/                     # Author last name
+│   │   ├── Paper_Title_2023.pdf
+│   │   └── Another_Paper_2023.pdf
+│   └── Johnson/
+│       └── Research_Study_2023.pdf
+└── Unknown/                       # For items without dates
+    └── NoAuthor/                  # For items without authors
 ```
 
 ## Limitations
@@ -179,13 +235,23 @@ papers3-zotero/
 - Read status (as text in Extra field)
 - Bundle relationships (as publication info)
 
+## Migration Statistics
+
+After migration, the tool reports:
+- Collections imported
+- Items imported  
+- Attachments linked
+- Files copied/organized
+- Files skipped (already exist)
+- Missing files (logged to `migration_missing_files.log`)
+
 ## Contributing
 
 Issues and pull requests welcome! Areas for improvement:
 - Better duplicate detection
-- Option to copy PDFs to Zotero storage
+- Option to import PDFs into Zotero storage (instead of linking)
 - Progress bar for large libraries
-- Resume capability for interrupted imports
+- Parallel file copying for performance
 - Validation of Papers3 data before import
 
 ## License

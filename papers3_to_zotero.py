@@ -19,6 +19,7 @@ import os
 import random
 import string
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -76,24 +77,31 @@ class Papers3ToZoteroMigrator:
         'contributor': 2,
     }
     
-    def __init__(self, papers3_data_path: str, zotero_db_path: str, 
+    def __init__(self, catalog_path: str, zotero_db_path: str, 
                  test_mode: bool = False, limit: Optional[int] = None,
-                 skip_attachments: bool = False):
+                 skip_attachments: bool = False, files_dir: Optional[str] = None,
+                 files_target_dir: Optional[str] = None, files_only: bool = False):
         """
         Initialize the migrator
         
         Args:
-            papers3_data_path: Path to Papers3 JSON export files
+            catalog_path: Path to Papers3 JSON catalog directory
             zotero_db_path: Path to Zotero SQLite database
             test_mode: If True, changes won't be committed
             limit: Limit number of items to import (for testing)
             skip_attachments: If True, skip PDF attachment import
+            files_dir: Path to Papers3 Files directory with hex subdirectories
+            files_target_dir: Destination directory for human-readable file structure
+            files_only: If True, only copy files without database migration
         """
-        self.papers3_path = Path(papers3_data_path)
+        self.catalog_path = Path(catalog_path)
         self.zotero_db_path = zotero_db_path
         self.test_mode = test_mode
         self.limit = limit
         self.skip_attachments = skip_attachments
+        self.files_dir = Path(files_dir) if files_dir else None
+        self.files_target_dir = Path(files_target_dir) if files_target_dir else None
+        self.files_only = files_only
         
         # Maps for tracking IDs
         self.collection_map: Dict[str, int] = {}  # Papers3 UUID -> Zotero ID
@@ -108,36 +116,168 @@ class Papers3ToZoteroMigrator:
             'attachments': 0,
             'creators': 0,
             'tags': 0,
-            'errors': []
+            'errors': [],
+            'files_found': 0,
+            'files_copied': 0,
+            'files_skipped': 0,
+            'files_missing': 0,
+            'missing_files': []
         }
         
+        # Track used paths for collision detection
+        self.used_paths = set()
+        
+    def validate_files_directory(self):
+        """Validate that the Files directory has the expected hex structure"""
+        if not self.files_dir or not self.files_dir.exists():
+            return False
+            
+        # Check for at least some hex directories (00-FF)
+        hex_dirs = []
+        for hex_val in ['00', '01', '02', '0A', '0F', '10', '1F', 'A0', 'FF']:
+            if (self.files_dir / hex_val).exists():
+                hex_dirs.append(hex_val)
+                
+        if len(hex_dirs) < 1:
+            logger.warning(f"Files directory appears invalid. Found no hex subdirectories")
+            return False
+            
+        logger.info(f"Files directory validated. Found hex subdirectories: {', '.join(hex_dirs[:5])}...")
+        return True
+    
+    def sanitize_filename(self, filename: str, max_length: int = 100) -> str:
+        """Sanitize filename for filesystem compatibility"""
+        if not filename:
+            return "Unknown"
+            
+        # Replace invalid characters
+        invalid_chars = '<>:"|?*\\/\0'
+        for char in invalid_chars:
+            filename = filename.replace(char, '_')
+            
+        # Remove control characters
+        filename = ''.join(char for char in filename if ord(char) >= 32)
+        
+        # Remove leading/trailing spaces and dots
+        filename = filename.strip(' .')
+        
+        # Truncate to max length
+        if len(filename) > max_length:
+            filename = filename[:max_length].rstrip(' .')
+            
+        # Fallback if empty after sanitization
+        if not filename:
+            filename = "Unknown"
+            
+        return filename
+    
+    def build_human_readable_path(self, pub: Dict, pdf: Dict) -> Path:
+        """Build a human-readable file path for a PDF"""
+        # Extract year
+        pub_date = pub.get('publication_date')
+        if pub_date:
+            try:
+                if 'T' in str(pub_date):
+                    year = pub_date.split('-')[0]
+                elif len(str(pub_date)) == 4:
+                    year = str(pub_date)
+                else:
+                    year = "Unknown"
+            except:
+                year = "Unknown"
+        else:
+            year = "Unknown"
+            
+        # Extract first author's last name
+        authors = pub.get('authors', [])
+        if authors and len(authors) > 0:
+            first_author = authors[0]
+            if isinstance(first_author, dict):
+                author_name = first_author.get('surname') or first_author.get('fullname', 'NoAuthor')
+            else:
+                # Try to parse string format
+                author_str = str(first_author)
+                if ', ' in author_str:
+                    author_name = author_str.split(', ')[0]
+                else:
+                    author_name = author_str
+            author_name = self.sanitize_filename(author_name, 50)
+        else:
+            author_name = "NoAuthor"
+            
+        # Build filename from title
+        title = pub.get('title', 'Untitled')
+        title = self.sanitize_filename(title)
+        
+        # Get file extension
+        if isinstance(pdf, dict):
+            original_path = pdf.get('path') or pdf.get('original_path', '')
+            extension = Path(original_path).suffix or '.pdf'
+        else:
+            extension = '.pdf'
+            
+        # Build base filename
+        base_filename = f"{title}_{year}{extension}"
+        
+        # Build full path
+        target_path = self.files_target_dir / year / author_name / base_filename
+        
+        # Handle collisions
+        if target_path in self.used_paths:
+            counter = 2
+            while True:
+                new_filename = f"{title}_{year}_{counter}{extension}"
+                target_path = self.files_target_dir / year / author_name / new_filename
+                if target_path not in self.used_paths:
+                    break
+                counter += 1
+                if counter > 100:  # Safety limit
+                    # Use UUID as last resort
+                    new_filename = f"{pub['uuid']}{extension}"
+                    target_path = self.files_target_dir / year / author_name / new_filename
+                    break
+                    
+        self.used_paths.add(target_path)
+        return target_path
+    
     def connect_databases(self):
         """Connect to Zotero database"""
-        self.zotero_conn = sqlite3.connect(self.zotero_db_path)
-        self.zotero_conn.execute("PRAGMA foreign_keys = ON")
-        self.zotero_cursor = self.zotero_conn.cursor()
+        if not self.files_only:
+            self.zotero_conn = sqlite3.connect(self.zotero_db_path)
+            self.zotero_conn.execute("PRAGMA foreign_keys = ON")
+            self.zotero_cursor = self.zotero_conn.cursor()
         
     def load_papers3_data(self):
         """Load Papers3 JSON exports"""
         logger.info("Loading Papers3 data...")
         
-        # Load publications
-        pub_file = self.papers3_path / 'catalog' / 'papers3_publications_full.json'
-        if not pub_file.exists():
-            pub_file = self.papers3_path / 'catalog' / 'papers3_publications.json'
+        # Load publications (prefer full version if available)
+        pub_file_full = self.catalog_path / 'papers3_publications_full.json'
+        pub_file = self.catalog_path / 'papers3_publications.json'
         
-        with open(pub_file, 'r', encoding='utf-8') as f:
-            self.papers3_data = json.load(f)
-            
-        logger.info(f"Loaded {len(self.papers3_data['publications'])} publications")
+        if pub_file_full.exists():
+            with open(pub_file_full, 'r', encoding='utf-8') as f:
+                self.papers3_data = json.load(f)
+                logger.info(f"Loaded {len(self.papers3_data['publications'])} publications from full export")
+        elif pub_file.exists():
+            with open(pub_file, 'r', encoding='utf-8') as f:
+                self.papers3_data = json.load(f)
+                logger.info(f"Loaded {len(self.papers3_data['publications'])} publications")
+        else:
+            raise FileNotFoundError(
+                f"Required publication file not found. Need either:\n"
+                f"  - {pub_file_full}\n"
+                f"  - {pub_file}"
+            )
         
         # Load collections if available
-        coll_file = self.papers3_path / 'catalog' / 'papers3_collections.json'
+        coll_file = self.catalog_path / 'papers3_collections.json'
         if coll_file.exists():
             with open(coll_file, 'r', encoding='utf-8') as f:
                 self.collections_data = json.load(f)
                 logger.info(f"Loaded {len(self.collections_data['collections'])} collections")
         else:
+            logger.info("No collections file found, skipping collection import")
             self.collections_data = {'collections': []}
             
     def generate_key(self, length: int = 8) -> str:
@@ -454,7 +594,42 @@ class Papers3ToZoteroMigrator:
             self.stats['errors'].append(f"Publication {pub.get('uuid')}: {e}")
             return None
     
-    def migrate_pdfs(self, pub: Dict, parent_item_id: int):
+    def copy_and_organize_file(self, source_path: Path, target_path: Path) -> bool:
+        """Copy a file from source to target with directory creation"""
+        try:
+            # Check if source exists
+            if not source_path.exists():
+                self.stats['files_missing'] += 1
+                self.stats['missing_files'].append(str(source_path))
+                return False
+                
+            self.stats['files_found'] += 1
+            
+            # Check if target already exists
+            if target_path.exists():
+                self.stats['files_skipped'] += 1
+                logger.debug(f"Skipping existing file: {target_path}")
+                return True
+                
+            # Create target directory if needed
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy file (or simulate in test mode)
+            if not self.test_mode:
+                shutil.copy2(source_path, target_path)
+                logger.debug(f"Copied: {source_path} -> {target_path}")
+            else:
+                logger.debug(f"Would copy: {source_path} -> {target_path}")
+                
+            self.stats['files_copied'] += 1
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error copying file {source_path}: {e}")
+            self.stats['errors'].append(f"File copy error: {e}")
+            return False
+    
+    def migrate_pdfs(self, pub: Dict, parent_item_id: Optional[int] = None):
         """Migrate PDF attachments for a publication"""
         if self.skip_attachments:
             return
@@ -473,97 +648,172 @@ class Papers3ToZoteroMigrator:
                 if not pdf_path:
                     continue
                 
-                # Create attachment item
-                self.zotero_cursor.execute("""
-                    INSERT INTO items 
-                    (itemTypeID, libraryID, key, dateAdded, dateModified, version, synced)
-                    VALUES (3, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0)
-                """, (self.generate_key(),))
+                # Handle file copying if directories are specified
+                final_path = pdf_path  # Default to original path
+                if self.files_dir and self.files_target_dir:
+                    # Build source path
+                    if pdf_path.startswith('Files/'):
+                        # Remove 'Files/' prefix and join with files_dir
+                        relative_path = pdf_path[6:]  # Remove 'Files/'
+                        source_path = self.files_dir / relative_path
+                    else:
+                        # Assume it's already a full path
+                        source_path = Path(pdf_path)
+                        
+                    # Build target path with human-readable structure
+                    target_path = self.build_human_readable_path(pub, pdf)
+                    
+                    # Copy file
+                    if self.copy_and_organize_file(source_path, target_path):
+                        final_path = str(target_path.absolute())
+                    else:
+                        # If copy failed, skip this attachment
+                        logger.warning(f"Skipping attachment due to copy failure: {pdf_path}")
+                        continue
                 
-                attachment_id = self.zotero_cursor.lastrowid
-                
-                # Add attachment details (linked file mode)
-                self.zotero_cursor.execute("""
-                    INSERT INTO itemAttachments
-                    (itemID, parentItemID, linkMode, contentType, path)
-                    VALUES (?, ?, 2, 'application/pdf', ?)
-                """, (attachment_id, parent_item_id, pdf_path))
-                
-                # Add title
-                self.add_item_data(attachment_id, 'title', pdf_caption)
-                
-                self.stats['attachments'] += 1
+                # Add to database if not in files-only mode
+                if not self.files_only and parent_item_id:
+                    # Create attachment item
+                    self.zotero_cursor.execute("""
+                        INSERT INTO items 
+                        (itemTypeID, libraryID, key, dateAdded, dateModified, version, synced)
+                        VALUES (3, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 0)
+                    """, (self.generate_key(),))
+                    
+                    attachment_id = self.zotero_cursor.lastrowid
+                    
+                    # Add attachment details (linked file mode)
+                    self.zotero_cursor.execute("""
+                        INSERT INTO itemAttachments
+                        (itemID, parentItemID, linkMode, contentType, path)
+                        VALUES (?, ?, 2, 'application/pdf', ?)
+                    """, (attachment_id, parent_item_id, final_path))
+                    
+                    # Add title
+                    self.add_item_data(attachment_id, 'title', pdf_caption)
+                    
+                    self.stats['attachments'] += 1
                 
             except Exception as e:
-                logger.error(f"Error adding PDF attachment: {e}")
+                logger.error(f"Error processing PDF attachment: {e}")
                 self.stats['errors'].append(f"PDF attachment: {e}")
     
     def migrate(self):
         """Run the complete migration"""
         logger.info("Starting Papers3 to Zotero migration...")
         
-        try:
-            # Connect to databases
-            self.connect_databases()
+        # Validate files directory if specified
+        if self.files_dir:
+            if not self.validate_files_directory():
+                logger.error("Files directory validation failed")
+                sys.exit(1)
+                
+        # Check if we need target directory
+        if self.files_dir and not self.files_target_dir:
+            logger.error("--files-target-dir is required when --files-dir is specified")
+            sys.exit(1)
             
+        try:
             # Load Papers3 data
             self.load_papers3_data()
             
-            # Start transaction
-            self.zotero_conn.execute("BEGIN TRANSACTION")
-            
-            try:
-                # Migrate collections first
-                if self.collections_data['collections']:
-                    self.migrate_collections()
+            # Files-only mode
+            if self.files_only:
+                logger.info("Running in files-only mode (no database changes)")
                 
-                # Migrate publications
                 publications = self.papers3_data['publications']
                 if self.limit:
                     publications = publications[:self.limit]
-                    logger.info(f"Limiting import to {self.limit} items")
-                
-                logger.info(f"Migrating {len(publications)} publications...")
-                if self.skip_attachments:
-                    logger.info("⚠️  Skipping PDF attachments (metadata-only import)")
+                    logger.info(f"Limiting to {self.limit} publications")
+                    
+                logger.info(f"Processing {len(publications)} publications for file organization...")
                 
                 for idx, pub in enumerate(publications):
                     if idx % 100 == 0:
                         logger.info(f"Progress: {idx}/{len(publications)}")
                     
-                    item_id = self.migrate_publication(pub)
+                    # Process PDFs without database operations
+                    self.migrate_pdfs(pub, None)
                     
-                    # Add PDFs if item was created successfully
-                    if item_id and not self.skip_attachments:
-                        self.migrate_pdfs(pub, item_id)
+                logger.info("✓ File organization completed!")
                 
-                # Commit or rollback based on mode
-                if self.test_mode:
-                    logger.info("Test mode: Rolling back changes")
-                    self.zotero_conn.rollback()
-                else:
-                    logger.info("Committing changes...")
-                    self.zotero_conn.commit()
-                    logger.info("✓ Migration completed successfully!")
+            else:
+                # Normal migration mode
+                # Connect to databases
+                self.connect_databases()
+                
+                # Start transaction
+                self.zotero_conn.execute("BEGIN TRANSACTION")
+                
+                try:
+                    # Migrate collections first
+                    if self.collections_data['collections']:
+                        self.migrate_collections()
                     
-            except Exception as e:
-                # Any error causes full rollback
-                logger.error(f"Migration failed: {e}")
-                logger.info("Rolling back all changes...")
-                self.zotero_conn.rollback()
-                raise
+                    # Migrate publications
+                    publications = self.papers3_data['publications']
+                    if self.limit:
+                        publications = publications[:self.limit]
+                        logger.info(f"Limiting import to {self.limit} items")
+                    
+                    logger.info(f"Migrating {len(publications)} publications...")
+                    if self.skip_attachments:
+                        logger.info("⚠️  Skipping PDF attachments (metadata-only import)")
+                    elif self.files_dir:
+                        logger.info(f"📁 Organizing files to: {self.files_target_dir}")
+                    
+                    for idx, pub in enumerate(publications):
+                        if idx % 100 == 0:
+                            logger.info(f"Progress: {idx}/{len(publications)}")
+                        
+                        item_id = self.migrate_publication(pub)
+                        
+                        # Add PDFs if item was created successfully
+                        if item_id and not self.skip_attachments:
+                            self.migrate_pdfs(pub, item_id)
+                    
+                    # Commit or rollback based on mode
+                    if self.test_mode:
+                        logger.info("Test mode: Rolling back changes")
+                        self.zotero_conn.rollback()
+                    else:
+                        logger.info("Committing changes...")
+                        self.zotero_conn.commit()
+                        logger.info("✓ Migration completed successfully!")
+                        
+                except Exception as e:
+                    # Any error causes full rollback
+                    logger.error(f"Migration failed: {e}")
+                    logger.info("Rolling back all changes...")
+                    self.zotero_conn.rollback()
+                    raise
                 
             # Print statistics
             logger.info("\n=== Migration Statistics ===")
-            logger.info(f"Collections imported: {self.stats['collections']}")
-            logger.info(f"Items imported: {self.stats['items']}")
-            logger.info(f"Attachments imported: {self.stats['attachments']}")
-            logger.info(f"Creators created: {self.stats['creators']}")
-            logger.info(f"Tags created: {self.stats['tags']}")
-            logger.info(f"Errors: {len(self.stats['errors'])}")
+            if not self.files_only:
+                logger.info(f"Collections imported: {self.stats['collections']}")
+                logger.info(f"Items imported: {self.stats['items']}")
+                logger.info(f"Attachments imported: {self.stats['attachments']}")
+                logger.info(f"Creators created: {self.stats['creators']}")
+                logger.info(f"Tags created: {self.stats['tags']}")
+            
+            # File statistics
+            if self.files_dir:
+                logger.info("\n=== File Operations Statistics ===")
+                logger.info(f"Files found and copied: {self.stats['files_copied']}")
+                logger.info(f"Files skipped (already exist): {self.stats['files_skipped']}")
+                logger.info(f"Files missing from source: {self.stats['files_missing']}")
+                
+                # Log missing files
+                if self.stats['missing_files']:
+                    missing_log = 'migration_missing_files.log'
+                    with open(missing_log, 'w') as f:
+                        for missing in self.stats['missing_files']:
+                            f.write(f"{missing}\n")
+                    logger.info(f"Missing files logged to: {missing_log}")
             
             if self.stats['errors']:
-                logger.warning("\n=== Errors ===")
+                logger.warning(f"\n=== Errors ({len(self.stats['errors'])}) ===")
                 for error in self.stats['errors'][:10]:
                     logger.warning(error)
                 if len(self.stats['errors']) > 10:
@@ -576,12 +826,20 @@ class Papers3ToZoteroMigrator:
 
 def main():
     parser = argparse.ArgumentParser(description='Migrate Papers3 library to Zotero')
-    parser.add_argument('--papers3-path', default='.',
-                        help='Path to Papers3 export directory (default: current directory)')
+    parser.add_argument('--json-catalog', required=True,
+                        help='Path to Papers3 JSON catalog directory containing exported files '
+                             '(required files: papers3_publications.json or papers3_publications_full.json; '
+                             'optional: papers3_collections.json)')
+    parser.add_argument('--files-dir', required=True,
+                        help='Path to Papers3 Files directory containing hex subdirectories (00-FF) with attachment files')
+    parser.add_argument('--files-target-dir', required=True,
+                        help='Destination directory for organized files in human-readable structure (Year/Author/Title format)')
     parser.add_argument('--zotero-db', default='zotero.sqlite',
                         help='Path to Zotero SQLite database (default: zotero.sqlite)')
+    parser.add_argument('--files-only', action='store_true',
+                        help='Only copy and organize files without database migration')
     parser.add_argument('--test', action='store_true',
-                        help='Run in test mode (no changes committed)')
+                        help='Run in test mode (simulates file operations, no changes committed)')
     parser.add_argument('--limit', type=int,
                         help='Limit number of items to import (for testing)')
     parser.add_argument('--skip-attachments', action='store_true',
@@ -589,23 +847,46 @@ def main():
     
     args = parser.parse_args()
     
-    # Verify files exist
-    if not os.path.exists(args.zotero_db):
+    # Verify catalog directory exists
+    if not os.path.exists(args.json_catalog):
+        logger.error(f"Catalog directory not found: {args.json_catalog}")
+        sys.exit(1)
+    
+    # Check for required JSON files
+    catalog_path = Path(args.json_catalog)
+    pub_file = catalog_path / 'papers3_publications.json'
+    pub_file_full = catalog_path / 'papers3_publications_full.json'
+    
+    if not pub_file.exists() and not pub_file_full.exists():
+        logger.error(f"Required publication file not found in {args.json_catalog}")
+        logger.error(f"Need either papers3_publications.json or papers3_publications_full.json")
+        sys.exit(1)
+    
+    # Verify Files directory exists if specified
+    if not os.path.exists(args.files_dir):
+        logger.error(f"Files directory not found: {args.files_dir}")
+        sys.exit(1)
+    
+    # Verify Zotero database exists (unless in files-only mode)
+    if not args.files_only and not os.path.exists(args.zotero_db):
         logger.error(f"Zotero database not found: {args.zotero_db}")
         sys.exit(1)
     
-    catalog_path = os.path.join(args.papers3_path, 'catalog')
-    if not os.path.exists(catalog_path):
-        logger.error(f"Papers3 catalog directory not found: {catalog_path}")
+    # Check for conflicting options
+    if args.skip_attachments and args.files_dir:
+        logger.error("Cannot use --skip-attachments with --files-dir")
         sys.exit(1)
     
     # Run migration
     migrator = Papers3ToZoteroMigrator(
-        args.papers3_path,
+        args.json_catalog,
         args.zotero_db,
         test_mode=args.test,
         limit=args.limit,
-        skip_attachments=args.skip_attachments
+        skip_attachments=args.skip_attachments,
+        files_dir=args.files_dir,
+        files_target_dir=args.files_target_dir,
+        files_only=args.files_only
     )
     
     migrator.migrate()
