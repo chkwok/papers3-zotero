@@ -158,8 +158,9 @@ The tool offers two approaches for handling attachments:
 
 **File Organization Features:**
 - Sanitizes filenames for cross-platform compatibility
-- Handles name collisions automatically
-- Skips already-copied files (resume capability)
+- Smart collision handling with content-based duplicate detection
+- Properly resumes interrupted migrations (uses MD5 hashing)
+- Handles name collisions by appending _2, _3, etc.
 - Logs missing files for review
 - Works in test mode to preview changes
 
