@@ -340,7 +340,7 @@ class Papers3ToZoteroMigrator:
             
     def generate_key(self, length: int = 8) -> str:
         """Generate a Zotero-style key"""
-        chars = string.ascii_uppercase + string.digits
+        chars = '23456789ABCDEFGHIJKLMNPQRSTUVWXYZ'
         return ''.join(random.choice(chars) for _ in range(length))
     
     def migrate_collections(self):
