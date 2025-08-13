@@ -181,6 +181,27 @@ The tool offers two approaches for handling attachments:
 2. **Foreign key constraint errors**: Usually indicates corrupted data - check error logs
 3. **Missing PDFs**: Verify PDF paths in Papers3 export are correct
 4. **Memory issues with large libraries**: Process in batches using `--limit`
+5. **Zotero sync fails with invalid key errors**: Run the key fixing script (see below)
+
+### Fixing Invalid Keys for Zotero Sync
+
+If you encounter sync errors due to invalid collection or item keys (containing forbidden characters like 0, 1, L, O, Y), use the `fix_zotero_keys.py` script:
+
+```bash
+# Check for invalid keys (dry run - no changes made)
+python3 fix_zotero_keys.py --zotero-db ~/Zotero/zotero.sqlite --dry-run
+
+# Fix invalid keys in the database
+python3 fix_zotero_keys.py --zotero-db ~/Zotero/zotero.sqlite
+```
+
+The script will:
+- Scan for keys containing invalid characters (0, 1, L, O, Y)
+- Generate valid replacement keys using only approved characters
+- Update the database with valid keys
+- Verify all keys are fixed and check for duplicates
+
+**Important**: After running the fix, restart Zotero and sync to apply changes.
 
 ### Verification Steps
 
